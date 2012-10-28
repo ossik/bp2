@@ -4,7 +4,7 @@ bp2
 S4 object model for BioPAX level 2
 
 This library was written for my Master's thesis in 2010. I'm storing the code
-in github just is case somebody might find it useful.
+in Github just in case somebody finds it useful.
 
 Released under MIT license. Feel free to fork.
 
