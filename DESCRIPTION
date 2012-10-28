@@ -1,0 +1,12 @@
+Package: bp2
+Type: Package
+Version: 0.1
+Date: 2010-06-10
+Title: BioPAX level 2 S4 object model
+Author: Ossi Koivistoinen <ossi.koivistoinen@gmail.com>
+Maintainer: Ossi Koivistoinen <ossi.koivistoinen@gmail.com>
+Depends: R (>= 1.8.0)
+Suggests: Rredland (>= 1.0.0)
+Description: S4 object model for BioPAX level 2
+License: MIT
+URL: https://github.com/ossik/bp2

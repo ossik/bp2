@@ -1,0 +1,191 @@
+% To compile: R CMD Sweave bp2.Rnw && latex bp2.tex && bibtex bp2 && latex bp2 && dvipdf bp2.dvi
+
+\documentclass[a4paper]{article}
+
+\title{bp2: S4 object model of BioPAX level 2}
+\author{Ossi Koivistoinen}
+
+\usepackage{Sweave}
+\usepackage{float}
+\usepackage{epsfig}
+\usepackage{url}
+\begin{document}
+
+\maketitle
+
+%\VignetteIndexEntry{bp2: S4 object model of BioPAX level 2}
+
+\section{Introduction}
+
+Bp2 package provides S4 object implementation of BioPAX level 2 \cite{BioPAX} and some helper functions for analyzing the data. The object
+model is created from an RDF file read with Rredland library that is part of BioConductor \cite{BioConductor}.
+
+\section{BioPAX level 2 object model}
+
+\subsection{Creating bp2 model}
+
+The bp2 package is meant for processing RDF data in a
+\texttt{data.frame} as returned by \textit{Rredland} library. Any
+correctly formatted \texttt{data.frame} will do so \texttt{bp2}
+package does not have a direct dependency to \texttt{Rredland}
+package. 
+
+Reactome pathway 69278 that describes the human mitotic cell cycle
+(\textit{Reactome\_69278.owl}) is used as an example in this vignette,
+but it is not included with the package because of copyright issues
+and it's large size. The file can be loaded in BioPAX level 2 format
+from Reactome \cite{Joshi-Tope2005}.
+
+Creating RDF \texttt{data.frame} with \texttt{Rredland} library:
+<<>>=
+require(Rredland)
+biopax.file.path <- system.file('data/Reactome_69278.owl',package='bp2')
+biopax.owl.file.uri <- paste('file://', biopax.file.path, sep='')	
+biopax.rdf <- readRDF(biopax.owl.file.uri, storageType="bdb")
+biopax.rdf.data.frame <- as(biopax.rdf, "data.frame")
+freeRedl(biopax.rdf)
+@
+
+Instance of \texttt{bp2.model} is created from the \texttt{data.frame}
+with \texttt{bp2.create.model} function:
+<<>>=
+require(bp2)
+my.bp2 <- bp2.create.model(biopax.rdf.data.frame)
+my.bp2
+@
+In the above example \texttt{my.bp2} is a \texttt{bp2.model} S4
+object. Printing the object to screen shows the slots of the object.
+
+\subsection{Saving and loading bp2.model objects}
+
+The \texttt{bp2.model} object can be saved and loaded, but there is one
+special command, \texttt{bp2.resume(bp2.model)}, that has to be
+called after loading the object. This is because \texttt{bp2}
+package maintains its internal environment that it uses on many
+operations and that environment must correspond the \texttt{bp2.model} object
+that is being processed.
+
+Saving \texttt{bp2.model} objects:
+<<>>=
+save(my.bp2, file='my_bp2.RData')
+@
+
+Loading \texttt{bp2.model} object:
+<<>>=
+load('my_bp2.RData')
+bp2.resume(my.bp2)
+@
+
+\section{Model structure}
+
+\texttt{bp2.model} object contains a list in slot \texttt{all.objects}
+containing all BioPAX objects defined in the source OWL/RDF
+file. The positions in the list serve as numeric IDs of the
+objects. There can be (usually one) NULL objects in the list if RDF
+data contained objects that were not recognized by the model. The
+NULLs are important because the positions of the list are significant.
+
+The \texttt{bp2} package uses its own reference system implemented
+similar to R factors: All fields of all objects in \texttt{bp2.model} are
+vectors of integers. These integers are indexes of
+\texttt{symbol.names} list within the \texttt{bp2.model} object. The names of
+\texttt{all.objects} list are located in the beginning of \texttt{symbol.names}
+list. Thus, if there is integer value in any object that is less than
+\texttt{length(my.bp2@all.objects)} it is a reference to the object
+with that location in \texttt{all.objects} list and the name of that object is
+found with the same index in \texttt{symbol.names} list. If the integer is
+larger, then it is just a symbol name, not a reference to another
+object and the string value of the symbol is found in symbol.names
+list.
+
+The show method for the objects automatically retrieves the names from
+the symbol name list so printing a objects gives human readable
+output.
+
+Print an object with the symbolic names:
+<<>>=
+my.bp2@all.objects[[2]]
+@
+
+To see the integer values:
+<<>>=
+unclass(my.bp2@all.objects[[2]])
+@
+
+Count the numbers of objects in the model and extract all pathways:
+<<>>=
+table(sapply(my.bp2@all.objects, class))
+pathways <- bp2.get.instances.of(my.bp2@all.objects, 'bp2.pathway')
+@
+
+There are functions to convert object or list of objects to numeric
+ids and the ids back to objects:
+<<>>=
+my.id <- bp2.objects2ids(pathways[[1]])
+my.ids <- bp2.objects2ids(pathways)
+@
+
+
+\section{Processing BioPAX objects}
+
+Function \texttt{bp2.find.followers(...)} is provided for extracting
+data from the objects. The mandatory argument is a vector of object
+ids to process. The function returns a list that contains one entry
+for each object id provided as an argument. Each list entry is a
+vector of integers that are IDs of other objects that are connected to
+the object.
+
+Create list of all connections to other objects for all objects:
+<<>>=
+not.null.objects <- my.bp2@all.objects[!(sapply(my.bp2@all.objects, is.null))]
+follower.list <- bp2.find.followers(not.null.objects) 
+@ 
+
+Note that this is a follower list presentation of graph that can be
+processed further with different graph packages, like \texttt{igraph}
+of \texttt{graphNEL}. This graph is not that useful per se, because
+all objects are closely connected via objects like
+\textit{bp2.dataSource}. For this reason the slots that are used to
+build follower list can be configured. For example get only pathway
+steps of all pathways:
+
+<<>>=
+pwSteps <- bp2.find.followers(pathways, include.slots='pathwayComponents') 
+pwSteps[1:5]
+bp2.ids2objects(pwSteps[[1]])
+@
+
+\section{Finding protein interations}
+
+Function \texttt{bp2.find.nodes} is used to find most relevant relations
+between pathways and protein complexes. The function recursively
+traverses a set of pathways and complexes following the relations
+presented in figure \ref{fig:relations}. The result of the function is
+a \texttt{bp2.nodes} object that contains various lists describing the
+relations between pathways. These lists can be used to construct
+different kinds of large graphs that describe biological
+processes \cite{Koivistoinen2010}.
+
+\begin{figure}[h]
+  \centering
+  \epsfig{file=pathway_protein.eps,width=0.75\textwidth}
+  \caption[Essential dependencies between classes in BioPAX level 2.]{UML diagram of relationships relevant in finding
+    \textit{Protein} instances that are related to \textit{Pathway}
+    instances. Solid lines show inheritance and dashed lines
+    references. \textit{Control} objects have CONTROL-TYPE property
+    that specifies the type of CONTROLLED relation (activation or
+    inhibition).}
+  \label{fig:relations}
+\end{figure}
+
+<<>>=
+complexes <- bp2.get.instances.of(my.bp2@all.objects, 'bp2.complex')
+nodes <- bp2.find.nodes(pathways, complexes)
+nodes
+hist(sapply(nodes@proteins,length),plot=FALSE)[c('breaks','counts')]
+@ 
+
+\bibliographystyle{unsrt}
+\bibliography{literature}
+
+\end{document}
